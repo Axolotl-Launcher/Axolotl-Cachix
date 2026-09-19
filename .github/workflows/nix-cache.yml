@@ -37,7 +37,6 @@ jobs:
         with:
           name: axolotl-launcher-git
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          accept-flake-config: true
 
       - name: Build the todo list
         env:
