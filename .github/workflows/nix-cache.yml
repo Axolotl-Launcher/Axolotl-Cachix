@@ -1,0 +1,113 @@
+name: Nix binary cache
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Axolotl ref to build (branch, tag, or commit)
+        required: false
+        default: main
+  schedule:
+    # 15:00 Asia/Shanghai (07:00 UTC) and 03:00 Asia/Shanghai (19:00 UTC).
+    # GitHub disables scheduled workflows after 60 days of repository inactivity.
+    - cron: "0 7 * * *"
+    - cron: "0 19 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-cache
+  cancel-in-progress: false
+
+env:
+  AXOLOTL_FLAKE: git+https://github.com/Mystic-Stars/Axolotl
+  CACHE_STORE: https://axolotl-launcher-git.cachix.org
+
+jobs:
+  cache:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - name: Set up Cachix
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: axolotl-launcher-git
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          accept-flake-config: true
+
+      - name: Build the todo list
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_REF: ${{ github.event.inputs.ref }}
+        run: |
+          # Any ref (branch, tag, commit) resolves to a commit hash so everything
+          # below can use the unambiguous git+...?rev=<hash> form.
+          sha_of() {
+            gh api "repos/Mystic-Stars/Axolotl/commits/$1" --jq .sha
+          }
+
+          todo=()
+          enqueue() {
+            local sha="$1" out
+            [ -z "$sha" ] && return
+
+            for e in "${todo[@]}"; do [ "$e" = "$sha" ] && return; done
+
+            if ! out="$(nix eval --raw --accept-flake-config "${AXOLOTL_FLAKE}?rev=${sha}#default.outPath" 2>/dev/null)"; then
+              echo "Skipping ${sha}: no buildable flake (likely predates Nix support)"
+              return
+            fi
+
+            if nix path-info --store "${CACHE_STORE}" "$out" >/dev/null 2>&1; then
+              echo "Already cached: ${sha}"
+              return
+            fi
+
+            echo "Needs caching: ${sha}"
+            todo+=("$sha")
+          }
+
+          if [ -n "$INPUT_REF" ]; then
+            echo "Requested ref: ${INPUT_REF}"
+            enqueue "$(sha_of "$INPUT_REF")"
+          else
+            stable="$(gh api 'repos/Mystic-Stars/Axolotl/releases/latest' \
+              --jq '.tag_name // empty' 2>/dev/null || true)"
+            preview="$(gh api 'repos/Mystic-Stars/Axolotl/releases?per_page=16' f\
+              --jq '[.[] | select(.prerelease)][0].tag_name // empty' 2>/dev/null || true)"
+
+            if [ -n "$stable" ]; then
+              echo "Latest stable release: ${stable}"
+              enqueue "$(sha_of "$stable")"
+            fi
+            if [ -n "$preview" ]; then
+              echo "Latest pre-release: ${preview}"
+              enqueue "$(sha_of "$preview")"
+            fi
+
+            if [ ${#todo[@]} -eq 0 ]; then
+              echo "No release needs caching; checking the latest main commit"
+              enqueue "$(sha_of main)"
+            fi
+          fi
+
+          if [ ${#todo[@]} -gt 0 ]; then
+            printf '%s\n' "${todo[@]}" > "$RUNNER_TEMP/todo"
+          else
+            : > "$RUNNER_TEMP/todo"
+          fi
+          echo "Todo:"
+          cat "$RUNNER_TEMP/todo"
+
+      - name: Cache the todo list in order
+        run: |
+          while IFS= read -r sha; do
+            [ -z "$sha" ] && continue
+            echo "::group::Caching ${sha}"
+            nix build --accept-flake-config "${AXOLOTL_FLAKE}?rev=${sha}#default"
+            echo "::endgroup::"
+          done < "$RUNNER_TEMP/todo"
