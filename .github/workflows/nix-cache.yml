@@ -21,6 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  AXOLOTL_REPO: https://github.com/Mystic-Stars/Axolotl
   AXOLOTL_FLAKE: git+https://github.com/Mystic-Stars/Axolotl
   CACHE_STORE: https://axolotl-launcher-git.cachix.org
 
@@ -40,13 +41,23 @@ jobs:
 
       - name: Build the todo list
         env:
-          GH_TOKEN: ${{ github.token }}
           INPUT_REF: ${{ github.event.inputs.ref }}
         run: |
-          # Any ref (branch, tag, commit) resolves to a commit hash so everything
-          # below can use the unambiguous git+...?rev=<hash> form.
+          # Resolve any ref (branch, tag, or commit) to a commit hash, so everything
+          # below uses the unambiguous git+...?rev=<hash> form. git ls-remote avoids
+          # any API token dependency.
           sha_of() {
-            gh api "repos/Mystic-Stars/Axolotl/commits/$1" --jq .sha
+            local ref="$1" raw peeled branch tag
+            if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+              printf '%s' "$ref"
+              return
+            fi
+            raw="$(git ls-remote "${AXOLOTL_REPO}" \
+              "refs/tags/${ref}^{}" "refs/heads/${ref}" "refs/tags/${ref}" 2>/dev/null || true)"
+            peeled="$(awk -v r="refs/tags/${ref}^{}" '$2==r { print $1; exit }' <<< "$raw")"
+            branch="$(awk -v r="refs/heads/${ref}" '$2==r { print $1; exit }' <<< "$raw")"
+            tag="$(awk -v r="refs/tags/${ref}" '$2==r { print $1; exit }' <<< "$raw")"
+            printf '%s' "${peeled:-${branch:-$tag}}"
           }
 
           todo=()
@@ -74,10 +85,10 @@ jobs:
             echo "Requested ref: ${INPUT_REF}"
             enqueue "$(sha_of "$INPUT_REF")"
           else
-            stable="$(gh api 'repos/Mystic-Stars/Axolotl/releases/latest' \
-              --jq '.tag_name // empty' 2>/dev/null || true)"
-            preview="$(gh api 'repos/Mystic-Stars/Axolotl/releases?per_page=16' f\
-              --jq '[.[] | select(.prerelease)][0].tag_name // empty' 2>/dev/null || true)"
+            releases="$(curl -fsSL 'https://api.github.com/repos/Mystic-Stars/Axolotl/releases?per_page=20' || true)"
+            releases="${releases:-[]}"
+            stable="$(jq -r '[.[] | select((.draft | not) and (.prerelease | not))][0].tag_name // empty' <<< "$releases")"
+            preview="$(jq -r '[.[] | select((.draft | not) and .prerelease)][0].tag_name // empty' <<< "$releases")"
 
             if [ -n "$stable" ]; then
               echo "Latest stable release: ${stable}"
