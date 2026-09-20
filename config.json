@@ -2,6 +2,7 @@
   "axolotl_repo": "https://github.com/Mystic-Stars/Axolotl",
   "cache_store": "https://axolotl-launcher-git.cachix.org",
   "cachix_name": "axolotl-launcher-git",
+  "version_fmt": "[0-9]+\\.[0-9]+\\.[0-9]+(-beta\\.[0-9]+)?",
   "default_refs": [
     "main",
     "experiment/linux-cef-runtime"

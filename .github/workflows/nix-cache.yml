@@ -15,6 +15,14 @@ on:
 permissions:
   contents: read
 
+env:
+  # Flake attribute to resolve (default == axolotl-launcher == symlinkJoin { enwrap desktop }).
+  BUILD_ATTR: default
+  # Strict pnpm-deps store-name pattern (grep -E). The leading "-" means callers
+  # must use `grep -E -e "$PAT"`, otherwise grep treats it as an option.
+  PNPM_DEPS_PATTERN: '-axolotl-pnpm-deps'
+  # CACHIX_PUSH_PATTERN is composed below as "-axolotl-<version_fmt>" (from config.json).
+
 jobs:
   cache:
     strategy:
@@ -48,6 +56,7 @@ jobs:
             "axolotl_repo=\(.axolotl_repo)",
             "cache_store=\(.cache_store)",
             "cachix_name=\(.cachix_name)",
+            "version_fmt=\(.version_fmt)",
             "default_refs=\(.default_refs | join(" "))"
           ' config.json >> "$GITHUB_OUTPUT"
 
@@ -56,35 +65,56 @@ jobs:
         with:
           name: ${{ steps.config.outputs.cachix_name }}
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          # We push only the Rust build output explicitly below, instead of letting
+          # the daemon hook push every locally built/downloaded store path.
+          skipPush: true
 
       - name: Build the todo list
+        id: todo
         env:
           AXOLOTL_REPO: ${{ steps.config.outputs.axolotl_repo }}
           AXOLOTL_FLAKE: git+${{ steps.config.outputs.axolotl_repo }}
           CACHE_STORE: ${{ steps.config.outputs.cache_store }}
           DEFAULT_REFS: ${{ steps.config.outputs.default_refs }}
           INPUT_REF: ${{ github.event.inputs.ref }}
+          CACHIX_PUSH_PATTERN: '-axolotl-${{ steps.config.outputs.version_fmt }}'
         run: |
           source .github/scripts/common.sh
 
+          # Find the Rust derivation (axolotl-<version>) inside the wrapper closure.
+          rust_drv_of() {
+            local drv
+            drv="$(nix eval --raw --accept-flake-config "${AXOLOTL_FLAKE}?rev=$1#packages.${SYSTEM}.${BUILD_ATTR}.drvPath" 2>/dev/null)" || return 1
+            nix-store -qR "$drv" 2>/dev/null | grep -E -e "${CACHIX_PUSH_PATTERN}" | grep -E '\.drv$' | head -1
+          }
+
+          # The pnpm-deps fixed-output derivation: its store path is independent of
+          # the architecture, so x86_64 and aarch64 share the same path.
+          pnpm_drv_of() {
+            local drv
+            drv="$(nix eval --raw --accept-flake-config "${AXOLOTL_FLAKE}?rev=$1#packages.${SYSTEM}.${BUILD_ATTR}.drvPath" 2>/dev/null)" || return 1
+            nix-store -qR "$drv" 2>/dev/null | grep -E -e "${PNPM_DEPS_PATTERN}" | head -1
+          }
+
           todo=()
           enqueue() {
-            local sha="$1" out
+            local sha="$1" drv out
             [ -z "$sha" ] && return
 
             for e in "${todo[@]}"; do [ "$e" = "$sha" ] && return; done
 
-            if ! out="$(nix eval --raw --accept-flake-config "${AXOLOTL_FLAKE}?rev=${sha}#packages.${SYSTEM}.default.outPath" 2>/dev/null)"; then
-              echo "Skipping ${sha}: no buildable ${SYSTEM} flake (unsupported system or predates Nix support)"
+            if ! drv="$(rust_drv_of "$sha")" || [ -z "$drv" ]; then
+              echo "Skipping ${sha}: no ${SYSTEM} output matching '${CACHIX_PUSH_PATTERN}'"
               return
             fi
 
+            out="$(nix-store -q --outputs "$drv")"
             if nix path-info --store "${CACHE_STORE}" "$out" >/dev/null 2>&1; then
-              echo "Already cached: ${sha} (${SYSTEM})"
+              echo "Already cached: ${sha} (${SYSTEM}) ${out}"
               return
             fi
 
-            echo "Needs caching: ${sha} (${SYSTEM})"
+            echo "Needs caching: ${sha} (${SYSTEM}) ${drv}"
             todo+=("$sha")
           }
 
@@ -94,24 +124,74 @@ jobs:
             enqueue "$(sha_of "$ref")"
           done
 
-          if [ ${#todo[@]} -gt 0 ]; then
-            printf '%s\n' "${todo[@]}" > "$RUNNER_TEMP/todo"
-          else
-            : > "$RUNNER_TEMP/todo"
-          fi
+          # <sha> <rust-drv> for each queued commit, in order.
+          : > "$RUNNER_TEMP/todo"
+          for sha in "${todo[@]}"; do
+            [ -z "$sha" ] && continue
+            drv="$(rust_drv_of "$sha")" || continue
+            [ -n "$drv" ] && printf '%s %s\n' "$sha" "$drv" >> "$RUNNER_TEMP/todo"
+          done
           echo "Todo (${SYSTEM}):"
           cat "$RUNNER_TEMP/todo"
 
+          # pnpm-deps store paths needed for this todo (same on every architecture).
+          for sha in "${todo[@]}"; do
+            [ -z "$sha" ] && continue
+            drv="$(pnpm_drv_of "$sha")" || continue
+            [ -n "$drv" ] && nix-store -q --outputs "$drv"
+          done | sort -u > "$RUNNER_TEMP/pnpm-deps.txt"
+          echo "pnpm-deps paths:"
+          cat "$RUNNER_TEMP/pnpm-deps.txt"
+          echo "pnpm_cache_key=pnpm-deps-$(sha256sum "$RUNNER_TEMP/pnpm-deps.txt" | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm-deps cache
+        id: pnpm-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pnpm-deps-cache
+          key: ${{ steps.todo.outputs.pnpm_cache_key }}
+
+      - name: Import pnpm-deps into the store
+        if: steps.pnpm-cache.outputs.cache-hit == 'true'
+        run: |
+          while IFS= read -r p; do
+            [ -z "$p" ] && continue
+            echo "Importing ${p} from the Actions cache"
+            nix copy --no-check-sigs --from "file://$RUNNER_TEMP/pnpm-deps-cache" "$p" || true
+          done < "$RUNNER_TEMP/pnpm-deps.txt"
+
       - name: Cache the todo list in order
         env:
-          AXOLOTL_FLAKE: git+${{ steps.config.outputs.axolotl_repo }}
+          CACHIX_NAME: ${{ steps.config.outputs.cachix_name }}
         run: |
-          while IFS= read -r sha; do
-            [ -z "$sha" ] && continue
+          while read -r sha drv; do
+            [ -z "$drv" ] && continue
             echo "::group::Caching ${sha} (${SYSTEM})"
-            nix build --accept-flake-config "${AXOLOTL_FLAKE}?rev=${sha}#packages.${SYSTEM}.default"
+            if ! outs="$(nix build --no-link --print-out-paths "${drv}^*")"; then
+              echo "Build failed for ${sha} (${SYSTEM})"
+              exit 1
+            fi
+            mapfile -t paths <<< "$outs"
+            if [ ${#paths[@]} -eq 0 ]; then
+              echo "Build for ${sha} (${SYSTEM}) produced no outputs"
+              exit 1
+            fi
+            printf 'Pushing %s\n' "${paths[@]}"
+            cachix push "${CACHIX_NAME}" "${paths[@]}"
             echo "::endgroup::"
           done < "$RUNNER_TEMP/todo"
+
+      - name: Export pnpm-deps from the store
+        if: steps.pnpm-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/pnpm-deps-cache"
+          while IFS= read -r p; do
+            [ -z "$p" ] && continue
+            if nix path-info "$p" >/dev/null 2>&1; then
+              echo "Exporting ${p} to the Actions cache"
+              nix copy --to "file://$RUNNER_TEMP/pnpm-deps-cache" "$p" || true
+            fi
+          done < "$RUNNER_TEMP/pnpm-deps.txt"
 
   report:
     needs: cache
@@ -139,6 +219,7 @@ jobs:
           jq -r '
             "axolotl_repo=\(.axolotl_repo)",
             "cache_store=\(.cache_store)",
+            "version_fmt=\(.version_fmt)",
             "default_refs=\(.default_refs | join(" "))"
           ' config.json >> "$GITHUB_OUTPUT"
 
@@ -148,6 +229,7 @@ jobs:
           AXOLOTL_FLAKE: git+${{ steps.config.outputs.axolotl_repo }}
           CACHE_STORE: ${{ steps.config.outputs.cache_store }}
           DEFAULT_REFS: ${{ steps.config.outputs.default_refs }}
+          CACHIX_PUSH_PATTERN: '-axolotl-${{ steps.config.outputs.version_fmt }}'
         run: bash .github/scripts/report.sh
 
       - name: Commit and push

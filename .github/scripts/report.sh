@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 #
 # Regenerate the "cached commits" table in README.md.
-# Requires AXOLOTL_REPO, AXOLOTL_FLAKE, CACHE_STORE, DEFAULT_REFS, SYSTEMS.
+# Requires AXOLOTL_REPO, AXOLOTL_FLAKE, CACHE_STORE, DEFAULT_REFS, SYSTEMS,
+# BUILD_ATTR, CACHIX_PUSH_PATTERN.
 set -euo pipefail
 
 source "$(dirname "$0")/common.sh"
 
 read -ra systems <<< "$SYSTEMS"
+
+# Store path of the Rust output that the cache job pushes to Cachix.
+push_out_of() {
+  local system="$1" sha="$2" drv dep
+  drv="$(nix eval --raw --accept-flake-config "${AXOLOTL_FLAKE}?rev=${sha}#packages.${system}.${BUILD_ATTR}.drvPath" 2>/dev/null)" || return 1
+  dep="$(nix-store -qR "$drv" 2>/dev/null | grep -E -e "${CACHIX_PUSH_PATTERN}" | grep -E '\.drv$' | head -1 || true)"
+  [ -z "$dep" ] && return 1
+  nix-store -q --outputs "$dep"
+}
 
 # The report always reflects the standing set of refs, never a manual INPUT_REF.
 unset INPUT_REF
@@ -42,7 +52,7 @@ for ref in "${refs[@]}"; do
   commit_url="${AXOLOTL_REPO}/commit/${sha}"
   line="| \`${ref}\` | [\`${sha:0:12}\`](${commit_url}) |"
   for system in "${systems[@]}"; do
-    if ! out="$(nix eval --raw --accept-flake-config "${AXOLOTL_FLAKE}?rev=${sha}#packages.${system}.default.outPath" 2>/dev/null)"; then
+    if ! out="$(push_out_of "$system" "$sha")"; then
       line+=" — |"
     elif nix path-info --store "${CACHE_STORE}" "$out" >/dev/null 2>&1; then
       line+=" ✅ |"
