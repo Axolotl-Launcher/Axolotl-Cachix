@@ -9,8 +9,10 @@ on:
   schedule:
     # 15:00 Asia/Shanghai (07:00 UTC) and 03:00 Asia/Shanghai (19:00 UTC).
     # GitHub disables scheduled workflows after 60 days of repository inactivity.
-    - cron: "0 7 * * *"
-    - cron: "0 19 * * *"
+    - cron: "0 3 * * *"
+      timezone: 'Asia/Shanghai'
+    - cron: "0 15 * * *"
+      timezone: 'Asia/Shanghai'
 
 permissions:
   contents: read
