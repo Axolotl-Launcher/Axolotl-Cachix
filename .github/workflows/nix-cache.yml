@@ -4,9 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Axolotl ref to build (branch, tag, or commit)
+        description: 'Space-separated refs to build, e.g. "main experiment/linux-cef-runtime" (branch, tag, or commit); leave empty for releases + default refs'
         required: false
-        default: main
   schedule:
     # 15:00 Asia/Shanghai (07:00 UTC) and 03:00 Asia/Shanghai (19:00 UTC).
     # GitHub disables scheduled workflows after 60 days of repository inactivity.
@@ -16,49 +15,57 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: nix-cache
-  cancel-in-progress: false
-
-env:
-  AXOLOTL_REPO: https://github.com/Mystic-Stars/Axolotl
-  AXOLOTL_FLAKE: git+https://github.com/Mystic-Stars/Axolotl
-  CACHE_STORE: https://axolotl-launcher-git.cachix.org
-
 jobs:
   cache:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-24.04
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    # Serialize per system so the x86_64 and aarch64 jobs can run in parallel
+    # without overlapping runs building the same store paths.
+    concurrency:
+      group: nix-cache-${{ matrix.system }}
+      cancel-in-progress: false
+    env:
+      SYSTEM: ${{ matrix.system }}
     steps:
+      - name: Check out the config
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - name: Load config
+        id: config
+        run: |
+          jq -r '
+            "axolotl_repo=\(.axolotl_repo)",
+            "cache_store=\(.cache_store)",
+            "cachix_name=\(.cachix_name)",
+            "default_refs=\(.default_refs | join(" "))"
+          ' config.json >> "$GITHUB_OUTPUT"
 
       - name: Set up Cachix
         uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
         with:
-          name: axolotl-launcher-git
+          name: ${{ steps.config.outputs.cachix_name }}
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Build the todo list
         env:
+          AXOLOTL_REPO: ${{ steps.config.outputs.axolotl_repo }}
+          AXOLOTL_FLAKE: git+${{ steps.config.outputs.axolotl_repo }}
+          CACHE_STORE: ${{ steps.config.outputs.cache_store }}
+          DEFAULT_REFS: ${{ steps.config.outputs.default_refs }}
           INPUT_REF: ${{ github.event.inputs.ref }}
         run: |
-          # Resolve any ref (branch, tag, or commit) to a commit hash, so everything
-          # below uses the unambiguous git+...?rev=<hash> form. git ls-remote avoids
-          # any API token dependency.
-          sha_of() {
-            local ref="$1" raw peeled branch tag
-            if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
-              printf '%s' "$ref"
-              return
-            fi
-            raw="$(git ls-remote "${AXOLOTL_REPO}" \
-              "refs/tags/${ref}^{}" "refs/heads/${ref}" "refs/tags/${ref}" 2>/dev/null || true)"
-            peeled="$(awk -v r="refs/tags/${ref}^{}" '$2==r { print $1; exit }' <<< "$raw")"
-            branch="$(awk -v r="refs/heads/${ref}" '$2==r { print $1; exit }' <<< "$raw")"
-            tag="$(awk -v r="refs/tags/${ref}" '$2==r { print $1; exit }' <<< "$raw")"
-            printf '%s' "${peeled:-${branch:-$tag}}"
-          }
+          source .github/scripts/common.sh
 
           todo=()
           enqueue() {
@@ -67,57 +74,89 @@ jobs:
 
             for e in "${todo[@]}"; do [ "$e" = "$sha" ] && return; done
 
-            if ! out="$(nix eval --raw --accept-flake-config "${AXOLOTL_FLAKE}?rev=${sha}#default.outPath" 2>/dev/null)"; then
-              echo "Skipping ${sha}: no buildable flake (likely predates Nix support)"
+            if ! out="$(nix eval --raw --accept-flake-config "${AXOLOTL_FLAKE}?rev=${sha}#packages.${SYSTEM}.default.outPath" 2>/dev/null)"; then
+              echo "Skipping ${sha}: no buildable ${SYSTEM} flake (unsupported system or predates Nix support)"
               return
             fi
 
             if nix path-info --store "${CACHE_STORE}" "$out" >/dev/null 2>&1; then
-              echo "Already cached: ${sha}"
+              echo "Already cached: ${sha} (${SYSTEM})"
               return
             fi
 
-            echo "Needs caching: ${sha}"
+            echo "Needs caching: ${sha} (${SYSTEM})"
             todo+=("$sha")
           }
 
-          if [ -n "$INPUT_REF" ]; then
-            echo "Requested ref: ${INPUT_REF}"
-            enqueue "$(sha_of "$INPUT_REF")"
-          else
-            releases="$(curl -fsSL 'https://api.github.com/repos/Mystic-Stars/Axolotl/releases?per_page=20' || true)"
-            releases="${releases:-[]}"
-            stable="$(jq -r '[.[] | select((.draft | not) and (.prerelease | not))][0].tag_name // empty' <<< "$releases")"
-            preview="$(jq -r '[.[] | select((.draft | not) and .prerelease)][0].tag_name // empty' <<< "$releases")"
-
-            if [ -n "$stable" ]; then
-              echo "Latest stable release: ${stable}"
-              enqueue "$(sha_of "$stable")"
-            fi
-            if [ -n "$preview" ]; then
-              echo "Latest pre-release: ${preview}"
-              enqueue "$(sha_of "$preview")"
-            fi
-
-            if [ ${#todo[@]} -eq 0 ]; then
-              echo "No release needs caching; checking the latest main commit"
-              enqueue "$(sha_of main)"
-            fi
-          fi
+          collect_refs
+          [ ${#REFS[@]} -gt 0 ] && echo "Candidates: ${REFS[*]}"
+          for ref in "${REFS[@]}"; do
+            enqueue "$(sha_of "$ref")"
+          done
 
           if [ ${#todo[@]} -gt 0 ]; then
             printf '%s\n' "${todo[@]}" > "$RUNNER_TEMP/todo"
           else
             : > "$RUNNER_TEMP/todo"
           fi
-          echo "Todo:"
+          echo "Todo (${SYSTEM}):"
           cat "$RUNNER_TEMP/todo"
 
       - name: Cache the todo list in order
+        env:
+          AXOLOTL_FLAKE: git+${{ steps.config.outputs.axolotl_repo }}
         run: |
           while IFS= read -r sha; do
             [ -z "$sha" ] && continue
-            echo "::group::Caching ${sha}"
-            nix build --accept-flake-config "${AXOLOTL_FLAKE}?rev=${sha}#default"
+            echo "::group::Caching ${sha} (${SYSTEM})"
+            nix build --accept-flake-config "${AXOLOTL_FLAKE}?rev=${sha}#packages.${SYSTEM}.default"
             echo "::endgroup::"
           done < "$RUNNER_TEMP/todo"
+
+  report:
+    needs: cache
+    # Only maintain README on the default branch.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: nix-cache-readme
+      cancel-in-progress: false
+    env:
+      SYSTEMS: x86_64-linux aarch64-linux
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - name: Load config
+        id: config
+        run: |
+          jq -r '
+            "axolotl_repo=\(.axolotl_repo)",
+            "cache_store=\(.cache_store)",
+            "default_refs=\(.default_refs | join(" "))"
+          ' config.json >> "$GITHUB_OUTPUT"
+
+      - name: Update README
+        env:
+          AXOLOTL_REPO: ${{ steps.config.outputs.axolotl_repo }}
+          AXOLOTL_FLAKE: git+${{ steps.config.outputs.axolotl_repo }}
+          CACHE_STORE: ${{ steps.config.outputs.cache_store }}
+          DEFAULT_REFS: ${{ steps.config.outputs.default_refs }}
+        run: bash .github/scripts/report.sh
+
+      - name: Commit and push
+        run: |
+          git add README.md
+          if git diff --cached --quiet -- README.md; then
+            echo "README.md is unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: update cached commit hashes"
+          git push
