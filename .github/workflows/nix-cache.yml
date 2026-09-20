@@ -189,7 +189,7 @@ jobs:
             [ -z "$p" ] && continue
             if nix path-info "$p" >/dev/null 2>&1; then
               echo "Exporting ${p} to the Actions cache"
-              nix copy --to "file://$RUNNER_TEMP/pnpm-deps-cache" "$p" || true
+              nix copy --to "file://$RUNNER_TEMP/pnpm-deps-cache?compression=none" "$p" || true
             fi
           done < "$RUNNER_TEMP/pnpm-deps.txt"
 
