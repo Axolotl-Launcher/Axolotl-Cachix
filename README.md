@@ -9,8 +9,8 @@ updated automatically by the [`nix-cache` workflow](.github/workflows/nix-cache.
 | Ref | Commit | x86_64-linux | aarch64-linux |
 | --- | --- | :---: | :---: |
 | `v1.9.6` | [`2a6635bb1631`](https://github.com/Mystic-Stars/Axolotl/commit/2a6635bb1631a081adfba52d341c92c03eb100ed) | — | — |
-| `v1.9.7-beta.4` | [`cbb8e2474cb9`](https://github.com/Mystic-Stars/Axolotl/commit/cbb8e2474cb9d2c70d926e9926ff1bdd0647fb90) | ❌ | ❌ |
-| `main` | [`e4e81ee16160`](https://github.com/Mystic-Stars/Axolotl/commit/e4e81ee16160a34aaeabcdbe54b19782be059c96) | ❌ | ❌ |
+| `v1.9.7-beta.5` | [`e53e59bb840f`](https://github.com/Mystic-Stars/Axolotl/commit/e53e59bb840f17bac5b88a91e923a69cca54ba65) | ❌ | ❌ |
+| `main` | [`e53e59bb840f`](https://github.com/Mystic-Stars/Axolotl/commit/e53e59bb840f17bac5b88a91e923a69cca54ba65) | ❌ | ❌ |
 | `experiment/linux-cef-runtime` | [`a9895dba70ed`](https://github.com/Mystic-Stars/Axolotl/commit/a9895dba70ed2adefa37cb7c07566ff92c462241) | — | — |
 
 <!-- END CACHED-COMMITS -->
