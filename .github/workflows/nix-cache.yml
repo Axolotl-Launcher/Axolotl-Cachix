@@ -49,6 +49,9 @@ jobs:
       # Cap a single ref's build so one hung `nix build` cannot eat the whole job
       # budget and starve the refs queued behind it.
       BUILD_TIMEOUT: 60m
+      # A ref whose commit failed to build this many times is skipped until the
+      # ref moves elsewhere. See .github/scripts/fail-counts.sh.
+      FAIL_THRESHOLD: 3
     steps:
       - name: Check out the config
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -76,6 +79,17 @@ jobs:
           # the daemon hook push every locally built/downloaded store path.
           skipPush: true
 
+      - name: Restore the failure counts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/fail-counts-${{ matrix.system }}.txt
+          # Every run writes a new key, because the counts change each time and
+          # actions/cache never overwrites an existing key. The prefix in
+          # restore-keys picks up the newest entry instead. The system is part of
+          # the prefix so the two matrix jobs never touch the same entry.
+          key: fail-counts-${{ matrix.system }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: fail-counts-${{ matrix.system }}-
+
       - name: Build the todo list
         id: todo
         env:
@@ -87,6 +101,13 @@ jobs:
           CACHIX_PUSH_PATTERN: '-axolotl-${{ steps.config.outputs.version_fmt }}'
         run: |
           source .github/scripts/common.sh
+          source .github/scripts/fail-counts.sh
+          fail_counts_load
+
+          # The commits this run's refs resolve to. A failure count is only
+          # dropped once no ref points at its commit anymore.
+          seen="$RUNNER_TEMP/seen-sha"
+          : > "$seen"
 
           # Find the Rust derivation (axolotl-<version>) inside the wrapper closure.
           rust_drv_of() {
@@ -110,6 +131,13 @@ jobs:
 
             for e in "${todo[@]}"; do [ "$e" = "$sha" ] && return; done
 
+            # Checked before resolving the derivation: a ref that is known to be
+            # broken should not even pay for the `nix eval` that resolves it.
+            if fail_counts_blacklisted "$sha"; then
+              echo "Skipping ${sha}: failed $(fail_count_of "$sha") times on ${SYSTEM}"
+              return
+            fi
+
             if ! drv="$(rust_drv_of "$sha")" || [ -z "$drv" ]; then
               echo "Skipping ${sha}: no ${SYSTEM} output matching '${CACHIX_PUSH_PATTERN}'"
               return
@@ -128,7 +156,9 @@ jobs:
           collect_refs
           [ ${#REFS[@]} -gt 0 ] && echo "Candidates: ${REFS[*]}"
           for ref in "${REFS[@]}"; do
-            enqueue "$(sha_of "$ref")"
+            sha="$(sha_of "$ref")"
+            [ -n "$sha" ] && printf '%s\n' "$sha" >> "$seen"
+            enqueue "$sha"
           done
 
           # <sha> <rust-drv> for each queued commit, in order.
@@ -171,6 +201,9 @@ jobs:
         env:
           CACHIX_NAME: ${{ steps.config.outputs.cachix_name }}
         run: |
+          source .github/scripts/fail-counts.sh
+          fail_counts_load
+
           # Each ref is built independently: a failure is recorded and the loop
           # moves on to the next ref, so a broken release cannot block the refs
           # queued behind it. A partially broken ref set is reported as a warning
@@ -194,6 +227,10 @@ jobs:
               else
                 echo "Build failed for ${sha} (${SYSTEM}) with exit ${rc}"
               fi
+              # Only a failed `nix build` counts towards the limit. A failed push
+              # does not: the commit itself builds, and counting it would
+              # blacklist a ref whose output never reached the cache.
+              fail_counts_bump "$sha"
               failed+=("${sha}")
               echo "::endgroup::"
               continue
@@ -218,6 +255,10 @@ jobs:
             cached=$((cached + 1))
             echo "::endgroup::"
           done < "$RUNNER_TEMP/todo"
+
+          # Written even when nothing failed, so the file always holds the state
+          # actions/cache saves at the end of the job.
+          fail_counts_save "$RUNNER_TEMP/seen-sha"
 
           # One cached ref is enough to keep the run green: a single broken commit
           # (e.g. a release tag that does not build) must not fail the schedule
