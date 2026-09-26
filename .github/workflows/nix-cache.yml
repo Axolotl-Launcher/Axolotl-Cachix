@@ -51,7 +51,7 @@ jobs:
       BUILD_TIMEOUT: 60m
     steps:
       - name: Check out the config
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
@@ -153,7 +153,7 @@ jobs:
 
       - name: Restore pnpm-deps cache
         id: pnpm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/pnpm-deps-cache
           key: ${{ steps.todo.outputs.pnpm_cache_key }}
@@ -259,7 +259,7 @@ jobs:
       SYSTEMS: x86_64-linux aarch64-linux
     steps:
       - name: Check out the repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
