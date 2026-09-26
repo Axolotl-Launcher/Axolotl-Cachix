@@ -7,26 +7,37 @@
 # pinned, so a failing `nix build` is reproducible. Counting those failures lets
 # later runs skip the ref instead of spending the job budget on it again.
 #
-# Requires SYSTEM and RUNNER_TEMP (FAIL_THRESHOLD defaults to 3).
+# FAIL_THRESHOLD defaults to 3. The counts file defaults to
+# $RUNNER_TEMP/fail-counts-$SYSTEM.txt and can be overridden with
+# FAIL_COUNTS_FILE; the path is resolved when it is used, not when this file is
+# sourced, so callers without SYSTEM set can still use fail_counts_load_file.
 
 FAIL_THRESHOLD="${FAIL_THRESHOLD:-3}"
-FAIL_COUNTS_FILE="${FAIL_COUNTS_FILE:-${RUNNER_TEMP}/fail-counts-${SYSTEM}.txt}"
 
 declare -A FAIL_COUNT=()
 
-# Read the counts file, ignoring malformed lines. Each line is `_<sha>=<count>`:
-# the leading underscore exists only so the key would also be usable as a shell
-# variable name, since a commit hash may start with a digit.
-fail_counts_load() {
+# Path of the counts file this shell reads and writes.
+fail_counts_file() {
+  printf '%s' "${FAIL_COUNTS_FILE:-${RUNNER_TEMP}/fail-counts-${SYSTEM}.txt}"
+}
+
+# Read one counts file into FAIL_COUNT, ignoring malformed lines. Each line is
+# `_<sha>=<count>`: the leading underscore exists only so the key would also be
+# usable as a shell variable name, since a commit hash may start with a digit.
+fail_counts_load_file() {
   FAIL_COUNT=()
-  [ -f "$FAIL_COUNTS_FILE" ] || return 0
-  local k v
+  local file="$1" k v
+  [ -f "$file" ] || return 0
   while IFS='=' read -r k v; do
     k="${k#_}"
     case "$k" in ''|'#'*) continue ;; esac
     case "$v" in ''|*[!0-9]*) continue ;; esac
     FAIL_COUNT["$k"]="$v"
-  done < "$FAIL_COUNTS_FILE"
+  done < "$file"
+}
+
+fail_counts_load() {
+  fail_counts_load_file "$(fail_counts_file)"
 }
 
 fail_count_of() {
@@ -47,7 +58,9 @@ fail_counts_bump() {
 # points at anymore is dropped, so the file only keeps what is still reachable.
 fail_counts_save() {
   local seen="${1:-}" k v
-  : > "$FAIL_COUNTS_FILE"
+  local file
+  file="$(fail_counts_file)"
+  : > "$file"
   for k in "${!FAIL_COUNT[@]}"; do
     v="${FAIL_COUNT[$k]}"
     if [ "$v" -lt "$FAIL_THRESHOLD" ]; then
@@ -55,5 +68,5 @@ fail_counts_save() {
     elif [ -n "$seen" ] && grep -qxF "$k" "$seen"; then
       printf '_%s=%s\n' "$k" "$v"
     fi
-  done | sort >> "$FAIL_COUNTS_FILE"
+  done | sort >> "$file"
 }

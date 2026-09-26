@@ -6,16 +6,76 @@
 set -euo pipefail
 
 source "$(dirname "$0")/common.sh"
+source "$(dirname "$0")/fail-counts.sh"
 
 read -ra systems <<< "$SYSTEMS"
 
-# Store path of the Rust output that the cache job pushes to Cachix.
-push_out_of() {
-  local system="$1" sha="$2" drv dep
-  drv="$(nix eval --raw --accept-flake-config "${AXOLOTL_FLAKE}?rev=${sha}#packages.${system}.${BUILD_ATTR}.drvPath" 2>/dev/null)" || return 1
-  dep="$(nix-store -qR "$drv" 2>/dev/null | grep -E -e "${CACHIX_PUSH_PATTERN}" | grep -E '\.drv$' | head -1 || true)"
-  [ -z "$dep" ] && return 1
-  nix-store -q --outputs "$dep"
+# Failure counts recorded by the cache job, keyed <system>:<sha>. They come from
+# the actions/cache entries this job restores; a missing file only means no run
+# has recorded a failure yet.
+declare -A counts=()
+for system in "${systems[@]}"; do
+  file="${RUNNER_TEMP:-}/fail-counts-${system}.txt"
+  [ -f "$file" ] || continue
+  fail_counts_load_file "$file"
+  for sha in "${!FAIL_COUNT[@]}"; do
+    counts["${system}:${sha}"]="${FAIL_COUNT[$sha]}"
+  done
+done
+
+# The wrapper derivation of every system for one commit, evaluated in a single
+# pass: the flake is fetched once, and a system without the attribute comes back
+# as null instead of failing the whole call.
+wrapper_drvs_json() {
+  local expr="pkgs: {" system
+  for system in "${systems[@]}"; do
+    expr+=" \"${system}\" = pkgs.\"${system}\".${BUILD_ATTR}.drvPath or null;"
+  done
+  expr+=" }"
+  nix eval --json --accept-flake-config --apply "$expr" \
+    "${AXOLOTL_FLAKE}?rev=$1#packages" 2>/dev/null
+}
+
+# One table cell: what the cache holds for this commit on this system. A miss
+# reports how many times the cache job has already failed to build it: nothing
+# recorded yet (the build itself worked but never reached the cache), one or two
+# failures, or FAIL_THRESHOLD and therefore skipped on the next run.
+cell_of() {
+  local system="$1" sha="$2" json="$3" drv dep n
+  drv="$(printf '%s' "$json" | jq -r --arg s "$system" '.[$s] // ""' 2>/dev/null || true)"
+  if [ -z "$drv" ]; then
+    printf '%s' ' — |'
+    return 0
+  fi
+
+  dep="$(axolotl_drv_in "$drv" || true)"
+  if [ -z "$dep" ]; then
+    printf '%s' ' — |'
+    return 0
+  fi
+
+  local -a outs=()
+  mapfile -t outs < <(nix-store -q --outputs "$dep")
+  if [ ${#outs[@]} -eq 0 ]; then
+    printf '%s' ' — |'
+    return 0
+  fi
+
+  if nix path-info --store "${CACHE_STORE}" "${outs[@]}" >/dev/null 2>&1; then
+    printf '%s' ' ✅ |'
+    return 0
+  fi
+
+  n="${counts["${system}:${sha}"]:-0}"
+  if [ "$n" -ge "$FAIL_THRESHOLD" ]; then
+    printf '%s' ' ❌ |'
+  elif [ "$n" -eq 2 ]; then
+    printf '%s' ' ❓ |'
+  elif [ "$n" -eq 1 ]; then
+    printf '%s' ' ❔ |'
+  else
+    printf '%s' ' ⏳ |'
+  fi
 }
 
 # The report always reflects the standing set of refs, never a manual INPUT_REF.
@@ -40,6 +100,7 @@ for system in "${systems[@]}"; do
 done
 
 rows=""
+json=""
 for ref in "${refs[@]}"; do
   sha="$(sha_of "$ref")"
   if [ -z "$sha" ]; then
@@ -49,16 +110,13 @@ for ref in "${refs[@]}"; do
     continue
   fi
 
+  json="$(wrapper_drvs_json "$sha")" || json=""
   commit_url="${AXOLOTL_REPO}/commit/${sha}"
-  line="| \`${ref}\` | [\`${sha:0:12}\`](${commit_url}) |"
+  # The full hash, not an abbreviation: `rev=` in a flake reference needs all 40
+  # characters, and this table is where they get copied from.
+  line="| \`${ref}\` | [\`${sha}\`](${commit_url}) |"
   for system in "${systems[@]}"; do
-    if ! out="$(push_out_of "$system" "$sha")"; then
-      line+=" — |"
-    elif nix path-info --store "${CACHE_STORE}" "$out" >/dev/null 2>&1; then
-      line+=" ✅ |"
-    else
-      line+=" ❌ |"
-    fi
+    line+="$(cell_of "$system" "$sha" "$json")"
   done
   rows+="${line}"$'\n'
 done
@@ -70,6 +128,8 @@ block="$(mktemp)"
   echo "$header"
   echo "$separator"
   printf '%s' "$rows"
+  echo
+  echo "Legend: \`✅\` in the cache · \`⏳\` built but never cached · \`❔\`/\`❓\` 1/2 recorded build failures · \`❌\` ${FAIL_THRESHOLD}+ recorded build failures, skipped · \`—\` derivation could not be resolved"
   echo
   echo '<!-- END CACHED-COMMITS -->'
 } > "$block"

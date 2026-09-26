@@ -18,6 +18,28 @@ sha_of() {
   printf '%s' "${peeled:-${branch:-$tag}}"
 }
 
+# Store path of the wrapper derivation (default == axolotl-launcher ==
+# symlinkJoin { enwrap desktop }) for one system and commit.
+# Requires AXOLOTL_FLAKE and BUILD_ATTR.
+wrapper_drv_of() {
+  nix eval --raw --accept-flake-config \
+    "${AXOLOTL_FLAKE}?rev=$2#packages.$1.${BUILD_ATTR}.drvPath" 2>/dev/null
+}
+
+# The axolotl-<version> derivation inside a wrapper closure. Takes the wrapper's
+# store path; requires CACHIX_PUSH_PATTERN.
+axolotl_drv_in() {
+  nix-store -qR "$1" 2>/dev/null | grep -E -e "${CACHIX_PUSH_PATTERN}" | grep -E '\.drv$' | head -1
+}
+
+# Resolve a commit straight to that derivation's store path.
+rust_drv_of() {
+  local drv
+  drv="$(wrapper_drv_of "$1" "$2")" || return 1
+  [ -z "$drv" ] && return 1
+  axolotl_drv_in "$drv"
+}
+
 # Populate the global REFS array:
 #   - manual run: the space-separated INPUT_REF
 #   - scheduled run: latest stable + preview releases, then DEFAULT_REFS

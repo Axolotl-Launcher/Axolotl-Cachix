@@ -24,6 +24,10 @@ env:
   # must use `grep -E -e "$PAT"`, otherwise grep treats it as an option.
   PNPM_DEPS_PATTERN: '-axolotl-pnpm-deps'
   # CACHIX_PUSH_PATTERN is composed below as "-axolotl-<version_fmt>" (from config.json).
+  # A commit that failed to build this many times is skipped until the ref moves
+  # elsewhere. The report job shares the value to render that state as ❌.
+  # See .github/scripts/fail-counts.sh.
+  FAIL_THRESHOLD: 3
 
 jobs:
   cache:
@@ -49,9 +53,6 @@ jobs:
       # Cap a single ref's build so one hung `nix build` cannot eat the whole job
       # budget and starve the refs queued behind it.
       BUILD_TIMEOUT: 60m
-      # A ref whose commit failed to build this many times is skipped until the
-      # ref moves elsewhere. See .github/scripts/fail-counts.sh.
-      FAIL_THRESHOLD: 3
     steps:
       - name: Check out the config
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -109,18 +110,15 @@ jobs:
           seen="$RUNNER_TEMP/seen-sha"
           : > "$seen"
 
-          # Find the Rust derivation (axolotl-<version>) inside the wrapper closure.
-          rust_drv_of() {
-            local drv
-            drv="$(nix eval --raw --accept-flake-config "${AXOLOTL_FLAKE}?rev=$1#packages.${SYSTEM}.${BUILD_ATTR}.drvPath" 2>/dev/null)" || return 1
-            nix-store -qR "$drv" 2>/dev/null | grep -E -e "${CACHIX_PUSH_PATTERN}" | grep -E '\.drv$' | head -1
-          }
-
+          # rust_drv_of() comes from common.sh, so the report job resolves the
+          # same derivation with the same rule.
+          #
           # The pnpm-deps fixed-output derivation: its store path is independent of
           # the architecture, so x86_64 and aarch64 share the same path.
           pnpm_drv_of() {
             local drv
-            drv="$(nix eval --raw --accept-flake-config "${AXOLOTL_FLAKE}?rev=$1#packages.${SYSTEM}.${BUILD_ATTR}.drvPath" 2>/dev/null)" || return 1
+            drv="$(wrapper_drv_of "$SYSTEM" "$1")" || return 1
+            [ -z "$drv" ] && return 1
             nix-store -qR "$drv" 2>/dev/null | grep -E -e "${PNPM_DEPS_PATTERN}" | head -1
           }
 
@@ -138,7 +136,7 @@ jobs:
               return
             fi
 
-            if ! drv="$(rust_drv_of "$sha")" || [ -z "$drv" ]; then
+            if ! drv="$(rust_drv_of "$SYSTEM" "$sha")" || [ -z "$drv" ]; then
               echo "Skipping ${sha}: no ${SYSTEM} output matching '${CACHIX_PUSH_PATTERN}'"
               return
             fi
@@ -165,7 +163,7 @@ jobs:
           : > "$RUNNER_TEMP/todo"
           for sha in "${todo[@]}"; do
             [ -z "$sha" ] && continue
-            drv="$(rust_drv_of "$sha")" || continue
+            drv="$(rust_drv_of "$SYSTEM" "$sha")" || continue
             [ -n "$drv" ] && printf '%s %s\n' "$sha" "$drv" >> "$RUNNER_TEMP/todo"
           done
           echo "Todo (${SYSTEM}):"
@@ -314,6 +312,24 @@ jobs:
             "version_fmt=\(.version_fmt)",
             "default_refs=\(.default_refs | join(" "))"
           ' config.json >> "$GITHUB_OUTPUT"
+
+      # Read-only counterparts of the entries the cache job writes. They must use
+      # actions/cache/restore: plain actions/cache would save a new entry under
+      # its own key on the way out. One step per system keeps the cache entries
+      # separate, so the platform names have to match SYSTEMS above.
+      - name: Restore the failure counts (x86_64-linux)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/fail-counts-x86_64-linux.txt
+          key: fail-counts-x86_64-linux-restore-${{ github.run_id }}
+          restore-keys: fail-counts-x86_64-linux-
+
+      - name: Restore the failure counts (aarch64-linux)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/fail-counts-aarch64-linux.txt
+          key: fail-counts-aarch64-linux-restore-${{ github.run_id }}
+          restore-keys: fail-counts-aarch64-linux-
 
       - name: Update README
         env:
