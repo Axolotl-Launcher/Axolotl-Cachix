@@ -36,7 +36,9 @@ jobs:
           - system: aarch64-linux
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 180
+    # Budget for the whole ref list: a per-ref timeout (BUILD_TIMEOUT below) can
+    # fire a few times before the job itself is cancelled.
+    timeout-minutes: 240
     # Serialize per system so the x86_64 and aarch64 jobs can run in parallel
     # without overlapping runs building the same store paths.
     concurrency:
@@ -44,6 +46,9 @@ jobs:
       cancel-in-progress: false
     env:
       SYSTEM: ${{ matrix.system }}
+      # Cap a single ref's build so one hung `nix build` cannot eat the whole job
+      # budget and starve the refs queued behind it.
+      BUILD_TIMEOUT: 60m
     steps:
       - name: Check out the config
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -166,25 +171,69 @@ jobs:
         env:
           CACHIX_NAME: ${{ steps.config.outputs.cachix_name }}
         run: |
+          # Each ref is built independently: a failure is recorded and the loop
+          # moves on to the next ref, so a broken release cannot block the refs
+          # queued behind it. A partially broken ref set is reported as a warning
+          # but keeps the run green; only an all-failure set turns the job red.
+          failed=()
+          attempted=0
+          cached=0
           while read -r sha drv; do
             [ -z "$drv" ] && continue
+            attempted=$((attempted + 1))
             echo "::group::Caching ${sha} (${SYSTEM})"
-            if ! outs="$(nix build --no-link --print-out-paths "${drv}^*")"; then
-              echo "Build failed for ${sha} (${SYSTEM})"
-              exit 1
+
+            # timeout(1) exits 124 on timeout; --kill-after covers a nix build
+            # that ignores SIGTERM. A timed-out ref is recorded like a failed one.
+            rc=0
+            outs="$(timeout --kill-after=60s "${BUILD_TIMEOUT:-60m}" \
+              nix build --no-link --print-out-paths "${drv}^*")" || rc=$?
+            if [ "$rc" -ne 0 ]; then
+              if [ "$rc" -eq 124 ]; then
+                echo "Build timed out for ${sha} (${SYSTEM}) after ${BUILD_TIMEOUT:-60m}"
+              else
+                echo "Build failed for ${sha} (${SYSTEM}) with exit ${rc}"
+              fi
+              failed+=("${sha}")
+              echo "::endgroup::"
+              continue
             fi
-            mapfile -t paths <<< "$outs"
+
+            mapfile -t paths < <(printf '%s\n' "$outs" | grep -v '^$')
             if [ ${#paths[@]} -eq 0 ]; then
               echo "Build for ${sha} (${SYSTEM}) produced no outputs"
-              exit 1
+              failed+=("${sha}")
+              echo "::endgroup::"
+              continue
             fi
-            printf 'Pushing %s\n' "${paths[@]}"
-            cachix push "${CACHIX_NAME}" "${paths[@]}"
+
+            if ! cachix push "${CACHIX_NAME}" "${paths[@]}"; then
+              echo "Push failed for ${sha} (${SYSTEM})"
+              failed+=("${sha}")
+              echo "::endgroup::"
+              continue
+            fi
+
+            printf 'Pushed %s\n' "${paths[@]}"
+            cached=$((cached + 1))
             echo "::endgroup::"
           done < "$RUNNER_TEMP/todo"
 
+          # One cached ref is enough to keep the run green: a single broken commit
+          # (e.g. a release tag that does not build) must not fail the schedule
+          # forever. Fail only when nothing at all could be cached.
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "::warning::Failed refs on ${SYSTEM}: ${failed[*]}"
+          fi
+          if [ $attempted -gt 0 ] && [ $cached -eq 0 ]; then
+            echo "::error::No ref could be cached on ${SYSTEM}: ${failed[*]}"
+            exit 1
+          fi
+
+      # Run even when some ref failed to build, so the pnpm-deps that did land in
+      # the store are still saved for the next run.
       - name: Export pnpm-deps from the store
-        if: steps.pnpm-cache.outputs.cache-hit != 'true'
+        if: ${{ !cancelled() && steps.pnpm-cache.outputs.cache-hit != 'true' }}
         run: |
           mkdir -p "$RUNNER_TEMP/pnpm-deps-cache"
           while IFS= read -r p; do
