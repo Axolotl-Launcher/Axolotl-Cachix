@@ -50,20 +50,20 @@ cell_of() {
   local system="$1" sha="$2" json="$3" drv dep n
   drv="$(printf '%s' "$json" | jq -r --arg s "$system" '.[$s] // ""' 2>/dev/null || true)"
   if [ -z "$drv" ]; then
-    printf '%s' ' — |'
+    printf '%s' ' 💤 |'
     return 0
   fi
 
   dep="$(axolotl_drv_in "$drv" || true)"
   if [ -z "$dep" ]; then
-    printf '%s' ' — |'
+    printf '%s' ' 💤 |'
     return 0
   fi
 
   local -a outs=()
   mapfile -t outs < <(nix-store -q --outputs "$dep")
   if [ ${#outs[@]} -eq 0 ]; then
-    printf '%s' ' — |'
+    printf '%s' ' 💤 |'
     return 0
   fi
 
