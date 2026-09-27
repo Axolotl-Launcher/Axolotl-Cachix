@@ -3,6 +3,8 @@ set -euo pipefail
 
 source "$(dirname "$0")/common.sh"
 source "$(dirname "$0")/fail-counts.sh"
+# The repository, cache and refs come from config.json.
+source "$(dirname "$0")/config.sh"
 
 read -ra systems <<< "$SYSTEMS"
 
