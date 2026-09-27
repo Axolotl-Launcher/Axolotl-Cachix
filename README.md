@@ -8,8 +8,6 @@ Prebuilt [Axolotl](https://github.com/Mystic-Stars/Axolotl) artifacts are pushed
 
 | Ref | Commit | x86_64-linux | aarch64-linux |
 | --- | --- | :---: | :---: |
-| `v1.9.6` | [`2a6635bb1631a081adfba52d341c92c03eb100ed`](https://github.com/Mystic-Stars/Axolotl/commit/2a6635bb1631a081adfba52d341c92c03eb100ed) | 💤 | 💤 |
-| `v1.9.7-beta.5` | [`e53e59bb840f17bac5b88a91e923a69cca54ba65`](https://github.com/Mystic-Stars/Axolotl/commit/e53e59bb840f17bac5b88a91e923a69cca54ba65) | ❌ | ❌ |
 | `main` | [`66c26843186cf73810fcf7a46982b93e80a4fa4f`](https://github.com/Mystic-Stars/Axolotl/commit/66c26843186cf73810fcf7a46982b93e80a4fa4f) | ✅ | ✅ |
 | `experiment/linux-cef-runtime` | [`a9895dba70ed2adefa37cb7c07566ff92c462241`](https://github.com/Mystic-Stars/Axolotl/commit/a9895dba70ed2adefa37cb7c07566ff92c462241) | 💤 | 💤 |
 
