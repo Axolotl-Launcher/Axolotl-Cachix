@@ -73,6 +73,7 @@ jobs:
         id: todo
         env:
           INPUT_REF: ${{ github.event.inputs.ref }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/todo.sh
 
       - name: Restore pnpm-deps cache
@@ -119,6 +120,7 @@ jobs:
       cancel-in-progress: false
     env:
       SYSTEMS: x86_64-linux aarch64-linux
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

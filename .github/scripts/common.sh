@@ -46,6 +46,14 @@ rust_drv_of() {
   axolotl_drv_in "$drv"
 }
 
+# The refs the last report wrote into README.md's table.
+previous_refs() {
+  local readme="${README_FILE:-README.md}"
+  [ -f "$readme" ] || return 0
+  sed -n '/<!-- BEGIN CACHED-COMMITS -->/,/<!-- END CACHED-COMMITS -->/p' "$readme" \
+    | sed -n 's/^| `\([^`]*\)` |.*/\1/p'
+}
+
 # Populate the global REFS array:
 #   - manual run: the space-separated INPUT_REF
 #   - scheduled run: latest stable + preview releases, then DEFAULT_REFS
@@ -56,12 +64,28 @@ collect_refs() {
     return
   fi
 
-  local api releases stable preview defaults
+  local api releases stable preview defaults ref rc=0
+  local -a auth=()
   api="${AXOLOTL_REPO/github.com/api.github.com/repos}"
-  releases="$(curl -fsSL "${api}/releases?per_page=20" || true)"
+  # Unauthenticated calls are rate limited per IP, which a runner shares.
+  [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+  releases="$(curl -fsSL "${auth[@]}" "${api}/releases?per_page=20")" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    printf '::warning::releases API call failed (curl exit %s), keeping the rows of the last report\n' "$rc" >&2
+    releases=""
+  fi
   releases="${releases:-[]}"
   stable="$(jq -r '[.[] | select((.draft | not) and (.prerelease | not))][0].tag_name // empty' <<< "$releases")"
   preview="$(jq -r '[.[] | select((.draft | not) and .prerelease)][0].tag_name // empty' <<< "$releases")"
+
+  # A failed releases call has to leave the table as it was: dropping the rows
+  # also drops the failure counts keyed by their commits, since a count only
+  # survives while some ref still resolves to it.
+  if [ -z "$stable" ] && [ -z "$preview" ]; then
+    while IFS= read -r ref; do
+      [ -n "$ref" ] && REFS+=("$ref")
+    done < <(previous_refs)
+  fi
 
   [ -n "$stable" ] && REFS+=("$stable")
   [ -n "$preview" ] && REFS+=("$preview")
