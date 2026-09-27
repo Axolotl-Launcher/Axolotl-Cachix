@@ -18,12 +18,18 @@ sha_of() {
   printf '%s' "${peeled:-${branch:-$tag}}"
 }
 
+# Flake reference for one commit ($1). shallow=1 asks for just that commit's
+# tree; without it, every rev costs a full clone of the repository's history.
+flake_ref() {
+  printf '%s?shallow=1&rev=%s' "$AXOLOTL_FLAKE" "$1"
+}
+
 # Store path of the wrapper derivation (default == axolotl-launcher ==
 # symlinkJoin { enwrap desktop }) for one system and commit.
 # Requires AXOLOTL_FLAKE and BUILD_ATTR.
 wrapper_drv_of() {
   nix eval --raw --accept-flake-config \
-    "${AXOLOTL_FLAKE}?rev=$2#packages.$1.${BUILD_ATTR}.drvPath" 2>/dev/null
+    "$(flake_ref "$2")#packages.$1.${BUILD_ATTR}.drvPath" 2>/dev/null
 }
 
 # The axolotl-<version> derivation inside a wrapper closure. Takes the wrapper's

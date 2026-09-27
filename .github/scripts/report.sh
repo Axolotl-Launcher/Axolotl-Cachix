@@ -45,7 +45,7 @@ wrapper_drvs_json() {
   done
   expr+=" }"
   nix eval --json --accept-flake-config --apply "$expr" \
-    "${AXOLOTL_FLAKE}?rev=$1#packages" 2>/dev/null
+    "$(flake_ref "$1")#packages" 2>/dev/null
 }
 
 cell_of() {
