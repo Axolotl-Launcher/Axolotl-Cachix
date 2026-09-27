@@ -7,11 +7,7 @@ on:
         description: 'Space-separated refs to build, e.g. "main experiment/linux-cef-runtime" (branch, tag, or commit); leave empty for releases + default refs'
         required: false
   schedule:
-    # 15:00 Asia/Shanghai (07:00 UTC) and 03:00 Asia/Shanghai (19:00 UTC).
-    # GitHub disables scheduled workflows after 60 days of repository inactivity.
-    - cron: "0 3 * * *"
-      timezone: 'Asia/Shanghai'
-    - cron: "0 15 * * *"
+    - cron: "0 0/8 * * *"
       timezone: 'Asia/Shanghai'
 
 permissions:
