@@ -10,7 +10,7 @@ Prebuilt [Axolotl](https://github.com/Mystic-Stars/Axolotl) artifacts are pushed
 | --- | --- | :---: | :---: |
 | `v1.9.6` | [`2a6635bb1631a081adfba52d341c92c03eb100ed`](https://github.com/Mystic-Stars/Axolotl/commit/2a6635bb1631a081adfba52d341c92c03eb100ed) | 💤 | 💤 |
 | `v1.9.7-beta.6` | [`ea3a154bdac185d578de1afc7b7ea73ea4b51f64`](https://github.com/Mystic-Stars/Axolotl/commit/ea3a154bdac185d578de1afc7b7ea73ea4b51f64) | ✅ | ✅ |
-| `main` | [`3cbc1a43201c3c3fe39ae3ef42ce0eb99c2dff56`](https://github.com/Mystic-Stars/Axolotl/commit/3cbc1a43201c3c3fe39ae3ef42ce0eb99c2dff56) | ✅ | ✅ |
+| `main` | [`fb3a25d94b0f961b6283452ab12f27932099202e`](https://github.com/Mystic-Stars/Axolotl/commit/fb3a25d94b0f961b6283452ab12f27932099202e) | ✅ | ✅ |
 | `experiment/linux-cef-runtime` | [`a9895dba70ed2adefa37cb7c07566ff92c462241`](https://github.com/Mystic-Stars/Axolotl/commit/a9895dba70ed2adefa37cb7c07566ff92c462241) | 💤 | 💤 |
 
 <!-- END CACHED-COMMITS -->
