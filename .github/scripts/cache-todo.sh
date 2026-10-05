@@ -28,7 +28,7 @@ while read -r sha drv; do
   # ignores SIGTERM. A timed-out ref is recorded like a failed one.
   rc=0
   outs="$(timeout --kill-after=60s "${BUILD_TIMEOUT:-60m}" \
-    nix build --no-link --print-out-paths "${drv}^*")" || rc=$?
+    nix build -L --no-link --print-out-paths "${drv}^*")" || rc=$?
   if [ "$rc" -ne 0 ]; then
     if [ "$rc" -eq 124 ]; then
       echo "Build timed out for ${sha} (${SYSTEM}) after ${BUILD_TIMEOUT:-60m}"
