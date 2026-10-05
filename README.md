@@ -2,7 +2,7 @@
 
 预构建 [美西螈启动器](https://github.com/Mystic-Stars/Axolotl) 产物由 [工作流](./.github/workflows/nix-cache.yml) 自动推送至 [Cachix](https://axolotl-launcher-git.cachix.org)。
 
-Prebuilt [Axolotl](https://github.com/Mystic-Stars/Axolotl) artifacts are pushed to [Cachix](https://axolotl-launcher-git.cachix.org) by the [workflow](./.github/workflows/nix-cache.yml).
+Prebuilt [Axolotl Launcher](https://github.com/Mystic-Stars/Axolotl) artifacts are pushed automatically by the [workflow](./.github/workflows/nix-cache.yml) to [Cachix](https://axolotl-launcher-git.cachix.org).
 
 <!-- BEGIN CACHED-COMMITS -->
 
