@@ -10,8 +10,7 @@ Prebuilt [Axolotl Launcher](https://github.com/Mystic-Stars/Axolotl) artifacts a
 | --- | --- | :---: | :---: |
 | `v1.9.7` | [`c4a1b6c2ecfd369a23428f853f291169576b1f27`](https://github.com/Mystic-Stars/Axolotl/commit/c4a1b6c2ecfd369a23428f853f291169576b1f27) | ✅ | ✅ |
 | `v1.9.8-beta.1` | [`e54a88d546aaebea90940ae74b130555063e4736`](https://github.com/Mystic-Stars/Axolotl/commit/e54a88d546aaebea90940ae74b130555063e4736) | ✅ | ✅ |
-| `main` | [`e54a88d546aaebea90940ae74b130555063e4736`](https://github.com/Mystic-Stars/Axolotl/commit/e54a88d546aaebea90940ae74b130555063e4736) | ✅ | ✅ |
-| `experiment/linux-cef-runtime` | [`f3ba3b903bf6f80a317e3a425a3217b318ae6d57`](https://github.com/Mystic-Stars/Axolotl/commit/f3ba3b903bf6f80a317e3a425a3217b318ae6d57) | ✅ | ✅ |
+| `main` | [`b957550cff0541e972435e81dd6a8693763d69b3`](https://github.com/Mystic-Stars/Axolotl/commit/b957550cff0541e972435e81dd6a8693763d69b3) | ⏳ | ⏳ |
 
 <!-- END CACHED-COMMITS -->
 
