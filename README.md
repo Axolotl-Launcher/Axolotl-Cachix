@@ -9,8 +9,8 @@ Prebuilt [Axolotl Launcher](https://github.com/Mystic-Stars/Axolotl) artifacts a
 | Ref | Commit | x86_64-linux | aarch64-linux |
 | --- | --- | :---: | :---: |
 | `v1.9.7` | [`c4a1b6c2ecfd369a23428f853f291169576b1f27`](https://github.com/Mystic-Stars/Axolotl/commit/c4a1b6c2ecfd369a23428f853f291169576b1f27) | ✅ | ✅ |
-| `v1.9.8-beta.1` | [`e54a88d546aaebea90940ae74b130555063e4736`](https://github.com/Mystic-Stars/Axolotl/commit/e54a88d546aaebea90940ae74b130555063e4736) | ✅ | ✅ |
-| `main` | [`e8d7f05d15bc6210e7bdc2398fffdc0062bae89d`](https://github.com/Mystic-Stars/Axolotl/commit/e8d7f05d15bc6210e7bdc2398fffdc0062bae89d) | ✅ | ✅ |
+| `v1.9.8-beta.2` | [`d1d5cc92f38db7d51c45c683945b619c16df5286`](https://github.com/Mystic-Stars/Axolotl/commit/d1d5cc92f38db7d51c45c683945b619c16df5286) | ✅ | ✅ |
+| `main` | [`b6313b55983f4475c6b6fc4f64648efdb6540969`](https://github.com/Mystic-Stars/Axolotl/commit/b6313b55983f4475c6b6fc4f64648efdb6540969) | ✅ | ✅ |
 
 <!-- END CACHED-COMMITS -->
 
