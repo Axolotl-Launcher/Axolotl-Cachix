@@ -10,7 +10,7 @@ Prebuilt [Axolotl Launcher](https://github.com/Mystic-Stars/Axolotl) artifacts a
 | --- | --- | :---: | :---: |
 | `v1.9.7` | [`c4a1b6c2ecfd369a23428f853f291169576b1f27`](https://github.com/Mystic-Stars/Axolotl/commit/c4a1b6c2ecfd369a23428f853f291169576b1f27) | ✅ | ✅ |
 | `v1.9.8-beta.1` | [`e54a88d546aaebea90940ae74b130555063e4736`](https://github.com/Mystic-Stars/Axolotl/commit/e54a88d546aaebea90940ae74b130555063e4736) | ✅ | ✅ |
-| `main` | [`2acdf986c4699362449e4615f15e4c80620631de`](https://github.com/Mystic-Stars/Axolotl/commit/2acdf986c4699362449e4615f15e4c80620631de) | ✅ | ✅ |
+| `main` | [`e8d7f05d15bc6210e7bdc2398fffdc0062bae89d`](https://github.com/Mystic-Stars/Axolotl/commit/e8d7f05d15bc6210e7bdc2398fffdc0062bae89d) | ✅ | ✅ |
 
 <!-- END CACHED-COMMITS -->
 
