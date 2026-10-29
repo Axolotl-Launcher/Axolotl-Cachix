@@ -14,7 +14,7 @@ then add `"axlmc.cachix.org-1:dmsRJqFQqLMfvRveerHV3DxDCW1wq1N+TX1+dryYWZU="` to 
 | --- | --- | :---: | :---: |
 | `v1.10.3` | [`be638d2c9f96c753ac40af313325ffa9e2c93df8`](https://github.com/Axolotl-Launcher/Axolotl/commit/be638d2c9f96c753ac40af313325ffa9e2c93df8) | ✅ | ✅ |
 | `v1.10.0-beta.5` | [`2d75d79481fe18e4a934027d5345493ab01a4b14`](https://github.com/Axolotl-Launcher/Axolotl/commit/2d75d79481fe18e4a934027d5345493ab01a4b14) | ✅ | ✅ |
-| `main` | [`f27da9f31366c2bdc08e1e503b6971b3358b7f55`](https://github.com/Axolotl-Launcher/Axolotl/commit/f27da9f31366c2bdc08e1e503b6971b3358b7f55) | ✅ | ✅ |
+| `main` | [`af0c69c5685b0e579ff7ffd879340a9a3ff24825`](https://github.com/Axolotl-Launcher/Axolotl/commit/af0c69c5685b0e579ff7ffd879340a9a3ff24825) | ❔ | ❔ |
 
 <!-- END CACHED-COMMITS -->
 
