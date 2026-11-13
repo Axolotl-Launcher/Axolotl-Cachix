@@ -12,9 +12,9 @@ then add `"axlmc.cachix.org-1:dmsRJqFQqLMfvRveerHV3DxDCW1wq1N+TX1+dryYWZU="` to 
 
 | Ref | Commit | x86_64-linux | aarch64-linux |
 | --- | --- | :---: | :---: |
-| `v1.10.5` | [`e9d1def79b35bcd2dceb20d83beb43bef0ba0182`](https://github.com/Axolotl-Launcher/Axolotl/commit/e9d1def79b35bcd2dceb20d83beb43bef0ba0182) | ✅ | ✅ |
+| `v1.11.0` | [`f0e995afb03a757da3833caf0d625df26522df89`](https://github.com/Axolotl-Launcher/Axolotl/commit/f0e995afb03a757da3833caf0d625df26522df89) | ✅ | ✅ |
 | `v1.11.0-beta.5` | [`a9fc9c20b17805f74c2d85b00176afecafb6bfbf`](https://github.com/Axolotl-Launcher/Axolotl/commit/a9fc9c20b17805f74c2d85b00176afecafb6bfbf) | ✅ | ✅ |
-| `main` | [`d8f529c6e54b9f1f0c7f5d0cb743268fa1db4bfd`](https://github.com/Axolotl-Launcher/Axolotl/commit/d8f529c6e54b9f1f0c7f5d0cb743268fa1db4bfd) | ⏳ | ⏳ |
+| `main` | [`f6176b15c9f2b79c2b19bb0a366cc063109eb7db`](https://github.com/Axolotl-Launcher/Axolotl/commit/f6176b15c9f2b79c2b19bb0a366cc063109eb7db) | ✅ | ✅ |
 
 <!-- END CACHED-COMMITS -->
 
